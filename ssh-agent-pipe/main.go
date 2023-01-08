@@ -9,8 +9,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"os/user"
-	"strconv"
 	"sync"
 	"syscall"
 
@@ -20,8 +18,6 @@ import (
 var (
 	verbose = flag.Bool("v", false, "verbose output on stderr")
 )
-
-const owner_uid = "1001"
 
 func main() {
 	flag.Parse()
@@ -41,18 +37,6 @@ func main() {
 	l, err := net.Listen("unix", path)
 	if err != nil {
 		log.Fatalln("Listen error:", err)
-	}
-
-	u, u_err := user.LookupId(owner_uid)
-
-	if u_err == nil {
-		uid, _ := strconv.Atoi(u.Uid)
-		gid, _ := strconv.Atoi(u.Gid)
-		c_err := os.Chown(path, uid, gid)
-
-		if c_err != nil {
-			log.Fatalln("Socket permission edit error", c_err)
-		}
 	}
 
 	sigc := make(chan os.Signal, 1)

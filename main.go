@@ -26,7 +26,8 @@ var (
 	verbose = flag.Bool("v", false, "verbose output on stderr")
 )
 
-const injectionLabel = "com.ensody.ssh-agent-inject"
+const injectionLabel = "inject-ssh-agent"
+const userLabel = "inject-ssh-uid"
 
 func main() {
 	flag.Parse()
@@ -47,6 +48,15 @@ func main() {
 	}
 }
 
+func getInjectUserId(container types.Container) string {
+	for label, value := range container.Labels {
+		if label == userLabel && len(value) > 0 {
+			return value
+		}
+	}
+	return "0"
+}
+
 func scanContainers() error {
 	ctx := context.Background()
 	cli, err := client.NewEnvClient()
@@ -64,7 +74,8 @@ func scanContainers() error {
 	}
 
 	for _, container := range containers {
-		injectAgent(ctx, cli, container.ID)
+		uid := getInjectUserId(container)
+		injectAgent(ctx, cli, container.ID, uid)
 	}
 
 	return nil
@@ -75,7 +86,7 @@ var injectedAgents = struct {
 	containers map[string]bool
 }{containers: map[string]bool{}}
 
-func injectAgent(ctx context.Context, cli *client.Client, containerID string) {
+func injectAgent(ctx context.Context, cli *client.Client, containerID string, uid string) {
 	injectedAgents.Lock()
 	defer injectedAgents.Unlock()
 	if _, ok := injectedAgents.containers[containerID]; ok {
@@ -107,10 +118,10 @@ func injectAgent(ctx context.Context, cli *client.Client, containerID string) {
 		return
 	}
 	injectedAgents.containers[containerID] = true
-	go injectAgentBg(containerID, socketPath)
+	go injectAgentBg(containerID, socketPath, uid)
 }
 
-func injectAgentBg(containerID string, socketPath string) {
+func injectAgentBg(containerID string, socketPath string, uid string) {
 	defer func() {
 		injectedAgents.Lock()
 		defer injectedAgents.Unlock()
@@ -128,6 +139,7 @@ func injectAgentBg(containerID string, socketPath string) {
 
 	args := []string{
 		"exec", "-i",
+		"-u", uid,
 		"-e", common.AuthSockEnv + "=" + socketPath,
 		containerID, "/usr/local/bin/ssh-agent-pipe",
 	}

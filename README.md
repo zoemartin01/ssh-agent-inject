@@ -1,33 +1,38 @@
 # ssh-agent-inject
 
-[![Build Status](https://travis-ci.com/ensody/ssh-agent-inject.svg?branch=master)](https://travis-ci.com/ensody/ssh-agent-inject)
-
-Forwards the host's ssh-agent into a Docker container. This is especially useful when working with the [Visual Studio Code Remote - Containers](https://code.visualstudio.com/docs/remote/containers) extension and Git repos cloned via SSH.
+Forwards the host's ssh-agent into a Docker container. This is especially useful when working with [devcontainers](https://containers.dev/) using the devcontainer cli but without using VSCode (e.g a vim configuration).
 
 ## Why this is needed
 
-While you can bind-mount the `SSH_AUTH_SOCK` from a Linux host, this is [not possible](https://github.com/microsoft/vscode-remote-release/issues/106) from a [macOS](https://github.com/docker/for-mac/issues/410) or Windows host. Also, none of the existing solutions is cross-platform and easy. The [recommended solution](https://code.visualstudio.com/docs/remote/containers#_using-ssh-keys) is to copy the SSH key from the host to the container, but then you have to manually add the key (assuming you've setup ssh-agent within the container) and enter the password within the container.
+While you can bind-mount the `SSH_AUTH_SOCK` from a Linux/macOS host, some
+configurations might run into problems:
+  - Users who set `SSH_AUTH_SOCK` to a non-default value (e.g. `~/.ssh/agent.sock`) to have multiple sessions reuse the same agent.
+  - Users with non-root users inside the container 
 
 With ssh-agent-inject you can skip those annoyances and simply reuse your host's ssh-agent.
 
 ## Usage
-
-[Download](https://github.com/ensody/ssh-agent-inject/releases) ssh-agent-inject for your platform. Make sure ssh-agent-inject runs in the background or just launch it on-demand.
+Make sure ssh-agent-inject runs in the background or just launch it on-demand.
 
 Add the following to your Dockerfile:
 
 ```Dockerfile
 ENV SSH_AUTH_SOCK=/tmp/.ssh-auth-sock
-LABEL com.ensody.ssh-agent-inject=
+LABEL inject-ssh-agent=
 ```
 
 Alternatively, you can run an arbitrary container directly:
 
 ```
-docker run -e SSH_AUTH_SOCK=/tmp/.ssh-auth-sock -l com.ensody.ssh-agent-inject ...
+docker run -e SSH_AUTH_SOCK=/tmp/.ssh-auth-sock -l inject-ssh-agent ...
 ```
 
-Note that this project is itself using ssh-agent-inject with VS Code (see `.devcontainer/`).
+### Non-root user inside container
+If you're using a non-root user inside the container, you need to make sure that the user has access to the socket file. You can do this by adding the following label to your Dockerfile:
+
+```Dockerfile
+LABEL inject-ssh-uid=1000
+```
 
 ## How it works
 
@@ -35,7 +40,7 @@ This project consists of two applications that communicate through stdio: `ssh-a
 
 The `ssh-agent-inject` command runs on the host and
 
-* watches Docker for containers having the `com.ensody.ssh-agent-inject` label
+* watches Docker for containers having the `inject-ssh-agent` label
 * copies the embedded `ssh-agent-pipe` binary into those containers
 * runs `ssh-agent-pipe` within each container via `docker exec`
 * connects to the host's ssh-agent (one connection per container)
@@ -56,12 +61,3 @@ That way your host system stays clean and the whole environment is automated, ex
 This saves time and prevents mistakes (wrong version, interference with other software installed on host, etc.).
 
 Run `./build.sh` to build binaries for all platforms.
-
-## Releasing
-
-* Update `CHANGELOG.md`.
-* Add a tag (e.g. `git tag v1.2.3`) and push it.
-* The CI system will deploy a draft [release](https://github.com/ensody/ssh-agent-inject/releases) to GitHub.
-* Edit the release description and publish it.
-
-Note: Only tags that look like a version number and start with "v" will be deployed to GitHub.
